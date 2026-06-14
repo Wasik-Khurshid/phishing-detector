@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pkl
+
+# Node / React
+node_modules/
+dist/
+
+# Environment
+.env
+
+# OS files
+.DS_Store
+Thumbs.db
