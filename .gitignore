@@ -13,3 +13,7 @@ dist/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Dataset files
+backend/phishing.csv
+backend/*.pkl

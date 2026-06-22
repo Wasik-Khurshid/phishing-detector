@@ -1,56 +1,67 @@
-# model.py
-# Train a Random Forest model to detect phishing URLs
+# model.py — Train on real 11,054 URL dataset
 
 import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import accuracy_score
-import joblib  # for saving the trained model
+from sklearn.metrics import accuracy_score, classification_report
+import joblib
 
-# ── Step 1: Load the dataset ─────────────────────────────
-df = pd.read_csv('dataset.csv')
-print("Dataset loaded! Shape:", df.shape)
+# ── Step 1: Load real dataset ─────────────────────────────
+df = pd.read_csv('phishing.csv')
+print(f"Dataset loaded! Shape: {df.shape}")
 
-# ── Step 2: Separate features (X) and label (y) ──────────
-# X = all columns EXCEPT 'label'  (the inputs)
-# y = only the 'label' column     (the answer we want to predict)
-X = df.drop('label', axis=1)
-y = df['label']
+# ── Step 2: Prepare features and label ───────────────────
+# Drop 'Index' column (not useful)
+# 'class' = -1 (phishing), 1 (legitimate)
+X = df.drop(['Index', 'class'], axis=1)
+y = df['class']
 
-print("\nFeatures (X):", list(X.columns))
-print("Label (y): label (0 = safe, 1 = phishing)")
+print(f"Features: {list(X.columns)}")
+print(f"Phishing: {(y == -1).sum()}, Legitimate: {(y == 1).sum()}")
 
-# ── Step 3: Split into training and testing sets ─────────
-# 80% data to train the model, 20% to test how well it learned
+# ── Step 3: Train/Test split ──────────────────────────────
 X_train, X_test, y_train, y_test = train_test_split(
     X, y, test_size=0.2, random_state=42
 )
 
 print(f"\nTraining samples: {len(X_train)}")
-print(f"Testing samples: {len(X_test)}")
+print(f"Testing samples : {len(X_test)}")
 
-# ── Step 4: Create and train the Random Forest model ─────
-# n_estimators = number of "trees" in the forest
-model = RandomForestClassifier(n_estimators=100, random_state=42)
+# ── Step 4: Train Random Forest ───────────────────────────
+model = RandomForestClassifier(
+    n_estimators=200,      # 200 trees — more = better accuracy
+    max_depth=None,        # Let trees grow fully
+    min_samples_split=2,
+    random_state=42,
+    n_jobs=-1              # Use all CPU cores
+)
+
+print("\nTraining model... (may take 30-60 seconds)")
 model.fit(X_train, y_train)
+print("Training complete!")
 
-print("\nModel trained successfully!")
-
-# ── Step 5: Test the model ────────────────────────────────
+# ── Step 5: Test accuracy ─────────────────────────────────
 predictions = model.predict(X_test)
 accuracy = accuracy_score(y_test, predictions)
 
-print(f"\nAccuracy on test data: {accuracy * 100:.2f}%")
+print(f"\n{'='*45}")
+print(f"ACCURACY: {accuracy * 100:.2f}%")
+print(f"{'='*45}")
+print("\nDetailed Report:")
+print(classification_report(y_test, predictions,
+      target_names=['Phishing', 'Legitimate']))
 
-# ── Step 6: Show which features matter most ──────────────
+# ── Step 6: Feature importance ────────────────────────────
 importance = pd.DataFrame({
     'feature': X.columns,
     'importance': model.feature_importances_
 }).sort_values('importance', ascending=False)
 
-print("\nFeature Importance (which clues matter most):")
-print(importance)
+print("\nTop 10 Most Important Features:")
+print(importance.head(10).to_string(index=False))
 
-# ── Step 7: Save the trained model to a file ──────────────
+# ── Step 7: Save model ────────────────────────────────────
 joblib.dump(model, 'phishing_model.pkl')
+joblib.dump(list(X.columns), 'model_features.pkl')  # Save feature names too!
 print("\nModel saved as 'phishing_model.pkl'")
+print("Features saved as 'model_features.pkl'")

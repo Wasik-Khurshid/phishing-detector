@@ -1,46 +1,87 @@
-# combine.py
-# Combine ML model prediction + heuristic rules into a final verdict
+# combine.py — Updated for new 11,054 URL trained model
 
 import joblib
 import pandas as pd
-from features import extract_features
 from heuristics import check_heuristics
 
-# Load the trained ML model (from Day 2)
+# Load trained model and feature names
 model = joblib.load('phishing_model.pkl')
+model_features = joblib.load('model_features.pkl')
+
+
+def extract_model_features(url):
+    import re
+    import urllib.parse
+
+    features = {}
+    parsed = urllib.parse.urlparse(url)
+    domain = parsed.netloc
+    path = parsed.path
+
+    ip_pattern = r'\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}'
+    features['UsingIP']             = 1  if re.search(ip_pattern, domain) else -1
+    features['LongURL']             = 1  if len(url) > 54 else -1
+    features['ShortURL']            = 1  if len(url) < 20 else -1
+    features['Symbol@']             = 1  if '@' in url else -1
+    features['Redirecting//']       = 1  if '//' in url[7:] else -1
+    features['PrefixSuffix-']       = 1  if '-' in domain else -1
+    features['SubDomains']          = 1  if domain.count('.') > 2 else -1
+    features['HTTPS']               = -1 if url.startswith('https') else 1
+    features['DomainRegLen']        = 1  if len(domain) > 20 else -1
+    features['Favicon']             = -1
+    features['NonStdPort']          = 1  if ':' in domain else -1
+    features['HTTPSDomainURL']      = 1  if 'https' in domain else -1
+    features['RequestURL']          = 1  if len(path) > 20 else -1
+    features['AnchorURL']           = -1
+    features['LinksInScriptTags']   = -1
+    features['ServerFormHandler']   = -1
+    features['InfoEmail']           = 1  if 'mail' in url.lower() else -1
+    features['AbnormalURL']         = 1  if domain not in url else -1
+    features['WebsiteForwarding']   = -1
+    features['StatusBarCust']       = -1
+    features['DisableRightClick']   = -1
+    features['UsingPopupWindow']    = -1
+    features['IframeRedirection']   = -1
+    features['AgeofDomain']         = 1
+    features['DNSRecording']        = -1
+    features['WebsiteTraffic']      = -1
+    features['PageRank']            = -1
+    features['GoogleIndex']         = -1
+    features['LinksPointingToPage'] = -1
+    features['StatsReport']         = -1
+
+    return features
 
 
 def analyze_url(url):
-    """
-    Input  : URL string
-    Output : Dictionary with full analysis:
-             - ml_score       → ML model's phishing probability (0-100)
-             - heuristic_score→ heuristic risk score (0-100)
-             - final_score    → combined weighted score (0-100)
-             - verdict        → 'SAFE', 'SUSPICIOUS', or 'PHISHING'
-             - flags          → list of triggered heuristic rules
-             - features       → all extracted features
-    """
+    # ── ML Model prediction ───────────────────────────────
+    features = extract_model_features(url)
+    df = pd.DataFrame([features])[model_features]
 
-    # ── Step 1: Extract features (Day 1) ──────────────────
-    features = extract_features(url)
+    prediction = model.predict(df)[0]
+    probability = model.predict_proba(df)[0]
 
-    # ── Step 2: ML model prediction (Day 2) ────────────────
-    df = pd.DataFrame([features])
-    probabilities = model.predict_proba(df)[0]
-    # probabilities[1] = probability of being phishing (label 1)
-    ml_score = probabilities[1] * 100
+    classes = list(model.classes_)
+    phishing_idx = classes.index(-1)
+    legit_idx = classes.index(1)
 
-    # ── Step 3: Heuristic rules (Day 3) ────────────────────
+    phish_prob = probability[phishing_idx] * 100
+    legit_prob = probability[legit_idx] * 100
+
+    # prediction == 1 = LEGITIMATE, prediction == -1 = PHISHING
+    if prediction == 1:
+        ml_score = max(0, 100 - legit_prob)
+    else:
+        ml_score = phish_prob
+
+    # ── Heuristic rules ───────────────────────────────────
     heuristic_result = check_heuristics(url)
     heuristic_score = heuristic_result['risk_score']
     flags = heuristic_result['flags']
 
-    # ── Step 4: Combine with weights ───────────────────────
-    # ML gets 60% weight, heuristics get 40% weight
+    # ── Combine ───────────────────────────────────────────
     final_score = (ml_score * 0.6) + (heuristic_score * 0.4)
 
-    # ── Step 5: Decide final verdict ───────────────────────
     if final_score <= 30:
         verdict = "SAFE"
     elif final_score <= 60:
@@ -59,28 +100,24 @@ def analyze_url(url):
     }
 
 
-# ── TEST SECTION ──────────────────────────────────────────
+# ── TEST ──────────────────────────────────────────────────
 if __name__ == "__main__":
-
     test_urls = [
         "http://paypa1-login-secure-verify.ru/account/confirm",
         "https://www.google.com/search",
         "http://192.168.1.1/bank/login",
         "https://www.amazon.com/orders",
-        "http://user@evil-site.com/paypal/login",
-        "https://www.spotify.com/playlist",
+        "http://amazon-security-alert.tk/signin/verify",
     ]
 
     for url in test_urls:
         result = analyze_url(url)
-        print(f"\n{'='*65}")
-        print(f"URL: {result['url']}")
-        print(f"{'='*65}")
-        print(f"ML Score        : {result['ml_score']}%")
-        print(f"Heuristic Score : {result['heuristic_score']}/100")
-        print(f"FINAL SCORE     : {result['final_score']}/100")
-        print(f"VERDICT         : {result['verdict']}")
+        print(f"\n{'='*55}")
+        print(f"URL     : {result['url']}")
+        print(f"ML Score: {result['ml_score']}%")
+        print(f"Heuristic: {result['heuristic_score']}/100")
+        print(f"FINAL   : {result['final_score']}/100")
+        print(f"VERDICT : {result['verdict']}")
         if result['flags']:
-            print("Red Flags:")
             for flag in result['flags']:
                 print(f"  ⚠ {flag}")
