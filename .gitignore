@@ -16,4 +16,3 @@ Thumbs.db
 
 # Dataset files
 backend/phishing.csv
-backend/*.pkl
